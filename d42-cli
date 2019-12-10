@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+'''
+D42 Utility
+
+DEFINED EXIT :: 0, 2, 8
+'''
+from lib.d42 import D42
+from lib.opts import D42Opts
+from lib.util import stderr
+
+
+def main():
+    '''Set up a D42 env and use it to execute a request'''
+    # Make it so
+    d42 = get_env()
+    if execute_request(d42):
+        return True
+
+    # Error processing
+    errors = d42.err_list
+    if not isinstance(errors, list):
+        stderr('Somebody intentionally broke things to get here', exit_status=8)
+    if not errors:
+        stderr('No error codes stored in session, but no boolean was returned', exit_status=8)
+    stderr('Errors were encountered: {}'.format(str(errors)), exit_status=int(errors[-1]))
+
+
+def get_env():
+    '''Returns d42 and opts objects representing execution'''
+    # The d42 object handles running state and loaded modules
+    d42 = D42()
+
+    # Get outputters available; use default if none
+    # Note: lib.output has more outputters available than this
+    op = [d42.outputter.output_format] if not d42.outputter.outputs \
+            else d42.outputter.outputs
+
+    # The opts object holds options passed at run-time
+    parser = D42Opts(op)
+    parser.load_module_options(d42)
+    opts = parser.parse_opts()
+
+    # Refresh d42 state with parsed options
+    d42.opts = opts
+    d42.update_attributes()
+
+    return d42
+
+
+def execute_request(d42):
+    '''Find the requested operation, see if the module was loaded, and
+    execute the request with the provided payload (options)'''
+    if not hasattr(d42.opts, 'operation'):
+        stderr('Unexpected environment', exit_status=2)
+
+    op = getattr(d42.opts, 'operation')
+    if not op:
+        stderr('No operation specified ; use --help', exit_status=2)
+
+    modname = op.split('.')[0]
+    function = op.split('.')[1]
+
+    if not hasattr(d42, modname):
+        # Someone probably made a typo in modhook_options()
+        stderr('Requested module not loaded', exit_status=2)
+    mod = getattr(d42, modname)
+
+    if not hasattr(mod, function):
+        # Somebody made a typo
+        stderr('Requested function not available in module', exit_status=2)
+    fun = getattr(mod, function)
+
+    return fun(d42)
+
+
+if __name__ == '__main__':
+    main()
